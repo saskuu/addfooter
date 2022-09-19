@@ -14,4 +14,5 @@ add footer to email in postfix
       flags=Rq user=nobody argv=/opt/postfix/addfooter.pl -f ${sender} -- ${recipient}
 
 Debug
+- in addfooter.conf set debug => 1
 - ./addfolder < mail > newmail
