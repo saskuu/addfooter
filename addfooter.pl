@@ -79,19 +79,10 @@ if ($debug) {
 
 
 {
-  my $fl_save=0;
-  my $fl_nosave=0;
-#  binmode(STDIN, ":utf8");
-#  binmode(STDIN, ":encoding(utf8)");
   binmode(STDIN, ":raw");
   while ($line=<STDIN>) {
     push @message, $line;
-    $fl_save = 1 if $allow_filter && ($line =~ /$allow_filter/i);
-    $fl_nosave = 1 if $deny_filter && ($line =~ /$deny_filter/i);
   }
-
-  $SAVE_DIR='.' if $debug;
-#  if (!$debug && $fl_save && !$fl_nosave && (open (FH, '>', "$SAVE_DIR/".time())))
   save_log(\@message,'.01') if !$debug;
 }
 
@@ -322,6 +313,7 @@ sub  trim { my $s = shift; $s =~ s/^\s+|\s+$//g; return $s };
 sub save_log {
   my ($msg,$sufix) = @_;
   return if !$full_log;
+  return if $debug;
 
   $sufix = '' if !$sufix;
   if (open (FH, '>', "$full_log_dir/".$TIME."$sufix")) {
