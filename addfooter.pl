@@ -39,6 +39,7 @@ save_log(\@ARGV,'.0') if !$debug;
 # footer inserted if "allow and not deny"
 my $allow_filter = $config{allow_filter} || '';
 my $deny_filter = $config{deny_filter} || '';
+my $block_filter_header = $config{block_filter_header} || '';
 
 my $fl_allow_footer = 0;
 my $fl_deny_footer = 0;
@@ -67,14 +68,6 @@ my @body = ();
 my @message = ();
 my @newmessage = ();
 
-if ($debug) {
-#  binmode(STDOUT, ":utf8");
-  binmode(STDOUT, ":raw");
-} else {
-  open (PIPE, " | $SENDMAIL");
-#  binmode(PIPE, ":utf8");
-  binmode(PIPE, ":raw");
-}
 
 
 
@@ -86,9 +79,9 @@ if ($debug) {
   save_log(\@message,'.01') if !$debug;
 }
 
-################################## 
+##################################
 # parsing message
-################################## 
+##################################
 foreach $line (@message) {
   my $raw = $line;
   $raw =~ s/[\r|\n]//g;
@@ -98,6 +91,7 @@ foreach $line (@message) {
   if ($fl_header) { # reading header
     $fl_allow_footer = 1 if $allow_filter && ($line =~ /$allow_filter/i);
     $fl_deny_footer = 1 if $deny_filter && ($line =~ /$deny_filter/i);
+    exit 0 if $block_filter_header && ($line =~ /$block_filter_header/i);
 
 #print  "$fl_allow_footer/$fl_deny_footer " if $debug;
 
@@ -120,6 +114,7 @@ foreach $line (@message) {
       my $s = $2;
       $content_transfer_encoding = lc $2;
     }
+
   } else { # reading body of message
     push @body,$line;
     if ($boundary) { # multipart message
@@ -185,8 +180,16 @@ if (!$fl_add) { # end message
 save_log(\@newmessage,'.02'.$fl_add) if (!$debug && $fl_allow_footer && !$fl_deny_footer);
 
 if (!$debug) {
+  open (PIPE, " | $SENDMAIL");
+#  binmode(PIPE, ":utf8");
+  binmode(PIPE, ":raw");
   foreach my $s (@newmessage) {
     print PIPE $s;
+  }
+} else {
+  binmode(STDOUT, ":raw");
+  foreach my $s (@newmessage) {
+    print $s;
   }
 }
 
@@ -198,12 +201,8 @@ exit 0;
 
 sub out {
   my ($text) = @_;
-  if ($debug) {
-    print $text;
-  } else {
-#    print PIPE $text;
-    push @newmessage, $text;
-  }
+#  print PIPE $text;
+  push @newmessage, $text;
 }
 
 sub add_footer {
