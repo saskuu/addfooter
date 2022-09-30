@@ -17,6 +17,9 @@ no warnings 'utf8';
 #sub encode_base64;
 sub out;
 sub add_footer;
+sub check_cte;
+sub check_cs;
+
 sub save_log;
 sub cleanCnt;
 
@@ -24,8 +27,10 @@ sub cleanCnt;
 # Const
 ######################
 my $SENDMAIL="/usr/sbin/sendmail -G -i @ARGV"; # NEVER NEVER NEVER use "-t" here.
-my $RE_BOUNDARY = qr/boundary=\"?([a-zA-Z0-9'\(\)+_,\-.\/:=? ]*)(?<! )\"?/; #'
-my $RE_CHARSET = qr/charset=\"?([a-zA-Z0-9+_\-.\/:=? ]*)(?<! )\"?/;
+my $RE_BOUNDARY = qr/boundary=\"?([a-zA-Z0-9'\(\)+_,\-.\/:=? ]*)(?<! )\"?/i; #'
+my $RE_CHARSET = qr/charset=\"?([a-zA-Z0-9+_\-.\/:=? ]*)(?<! )\"?/i;
+my $RE_CTE = qr/^Content-Transfer-Encoding:( |\t)(.*)$/i;
+
 my $TIME = time().sprintf("%03d",int(rand(999)));
 my $debug = $config{debug} || 0;
 my $full_log = $config{full_log} || 0;
@@ -101,8 +106,9 @@ foreach $line (@message) {
       $content_type = lc $content_type;
     }
 
-    if ($content_type && ($raw =~ /$RE_CHARSET/i )) {
+    if ($content_type && ($raw =~ /$RE_CHARSET/ )) {
       $charset = lc $1;
+      check_cs(\$line,\$charset);
     }
 
     if (($content_type =~ /multipart/) && ($raw =~ /$RE_BOUNDARY/)) {
@@ -110,9 +116,10 @@ foreach $line (@message) {
       $fl_part_header = 1;
     }
 
-    if (!$content_transfer_encoding && ($raw =~ /^Content-Transfer-Encoding:( |\t)(.*)$/i )) {
+    if (!$content_transfer_encoding && ($raw =~ /$RE_CTE/ )) {
       my $s = $2;
       $content_transfer_encoding = lc $2;
+      check_cte(\$line,\$content_transfer_encoding);
     }
 
   } else { # reading body of message
@@ -139,12 +146,14 @@ foreach $line (@message) {
           $part_content_type = lc $part_content_type;
         }
 
-        if ($part_content_type && ($raw =~ /$RE_CHARSET/i )) {
+        if ($part_content_type && ($raw =~ /$RE_CHARSET/ )) {
           $part_charset = lc $1;
+          check_cs(\$line,\$part_charset);
         }
 
-        if (!$part_content_transfer_encoding && ($raw =~ /^Content-Transfer-Encoding:( |\t)(.*)$/i )) {
+        if (!$part_content_transfer_encoding && ($raw =~ /$RE_CTE/ )) {
           $part_content_transfer_encoding = lc $2;
+          check_cte(\$line,\$part_content_transfer_encoding);
         }
 
         if (($line=~m/^\r?\n$/)) { # new line: end header, start body
@@ -208,7 +217,6 @@ sub out {
 sub add_footer {
   my ($str,$ct,$chs,$cte) = @_;
   if ($fl_allow_footer && !$fl_deny_footer) {
-#print "============== $fl_add_txt $fl_add_html $ct =================\n";
     my $add = '';
     my $add_str = '';
     if (!$fl_add_txt && ($ct =~ /text\/plain/)) {
@@ -232,7 +240,6 @@ sub add_footer {
         };
       }
 
-#print "=================== FOOTER $chs============\n";
       if ($cte =~ /base64/i) {
         if ($chs =~ /utf.?8/i) {
           $add = encode_base64(encode('utf-8',$add));
@@ -293,6 +300,21 @@ sub _encode_base64 ($;$)
     return $res;
 }
 
+sub check_cte {
+  my ($str, $cte) = @_;
+  if (lc($$cte) eq '7bit') {
+    $$str =~ s/7bit/8bit/;
+    $$cte = '8bit';
+  }
+}
+
+sub check_cs {
+  my ($str, $cs) = @_;
+  if (lc($$cs) eq 'us-ascii') {
+    $$str =~ s/us-ascii/UTF-8/;
+    $$cs = 'UTF-8';
+  }
+}
 
 # for debug
 sub cleanCnt {
