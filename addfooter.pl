@@ -34,6 +34,7 @@ my $RE_CTE = qr/^Content-Transfer-Encoding:( |\t)(.*)$/i;
 my $TIME = time().sprintf("%03d",int(rand(999)));
 my $debug = $config{debug} || 0;
 my $full_log = $config{full_log} || 0;
+my $files_full_log = $config{files_full_log} || 500;
 my $full_log_dir = $config{full_log_dir} || '/tmp';
 
 save_log(\@ARGV,'.0') if !$debug;
@@ -312,7 +313,7 @@ sub check_cs {
   my ($str, $cs) = @_;
   if (lc($$cs) eq 'us-ascii') {
     $$str =~ s/us-ascii/UTF-8/;
-    $$cs = 'UTF-8';
+    $$cs = 'utf-8';
   }
 }
 
@@ -345,7 +346,7 @@ sub save_log {
       print FH $s;
     }
     close FH;
-    cleanCnt("$full_log_dir",5000);
+    cleanCnt("$full_log_dir",$files_full_log);
   }
 
 }
