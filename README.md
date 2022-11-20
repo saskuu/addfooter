@@ -1,5 +1,5 @@
 # addfooter
-add footer to email in postfix
+add footer (disclaimer) to email in postfix
 
 ```
 cp addfooter.pl /etc/postfix
