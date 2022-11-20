@@ -1,10 +1,10 @@
 # addfooter
 add footer to email in postfix
 
-
+```
 cp addfooter.pl /etc/postfix
 cp addfooter.conf /etc/postfix
-
+```
 /etc/postfix/master.cf
 
     smtpd      pass  -       -       n       -       -       smtpd
