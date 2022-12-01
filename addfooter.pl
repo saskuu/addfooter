@@ -309,10 +309,11 @@ sub check_cte {
   }
 }
 
+# check charset and change to UTF8
 sub check_cs {
   my ($str, $cs) = @_;
-  if (lc($$cs) eq 'us-ascii') {
-    $$str =~ s/us-ascii/UTF-8/;
+  if ($$cs =~ /(us-ascii|ISO-8859-.)/i) {
+    $$str =~ s/$1/UTF-8/i;
     $$cs = 'utf-8';
   }
 }
