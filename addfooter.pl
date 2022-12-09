@@ -10,8 +10,6 @@ use lib "$Bin";
 our %config;
 require "$Bin/addfooter.conf";
 
-
-
 no warnings 'utf8';
 
 #sub encode_base64;
@@ -68,6 +66,7 @@ my $part_charset = '';
 my $part_content_transfer_encoding = '';
 my $fl_part_header = 0;  # =1 if header reading
 my $fl_part_started = 0; # =1 if body reading
+my $fl_part_no_footer = 0; # =1 if part body not possible to have footer
 
 my $line='';
 my @body = ();
@@ -128,8 +127,12 @@ foreach $line (@message) {
     if ($boundary) { # multipart message
 #      if ($raw =~ /^$boundary(|--)$/) {
       if (($raw eq $boundary) || ($raw eq "$boundary--")) {
-        if ($fl_part_started) { # end part (start next part). add footer ?
+        if ($fl_part_started && !$fl_part_no_footer) { # end part (start next part). add footer ?
           $line = add_footer($line,$part_content_type,$part_charset,$part_content_transfer_encoding);
+        }
+
+        if (($raw eq "$boundary--") &&  ($fl_allow_footer && !$fl_deny_footer) && !($fl_add_txt || $fl_add_html)) {
+          $line = "\n$boundary\nContent-Type: text/plain;charset=\"UTF-8\"\nContent-Transfer-Encoding: 8bit\n".add_footer($line,"text/plain","UTF-8","8bit");
         }
 
         $fl_part_header = 1;
@@ -137,7 +140,9 @@ foreach $line (@message) {
         $part_content_type = '';
         $part_charset = '';
         $part_content_transfer_encoding = '';
+        $fl_part_no_footer = 0;
         @body = ();
+
       }
 
       if ($fl_part_header) {
@@ -155,6 +160,10 @@ foreach $line (@message) {
         if (!$part_content_transfer_encoding && ($raw =~ /$RE_CTE/ )) {
           $part_content_transfer_encoding = lc $2;
           check_cte(\$line,\$part_content_transfer_encoding);
+        }
+
+        if ($raw =~ /^Content-Disposition:(| |\t)attachment;/i ) {
+          $fl_part_no_footer = 1;
         }
 
         if (($line=~m/^\r?\n$/)) { # new line: end header, start body
@@ -245,7 +254,7 @@ sub add_footer {
         if ($chs =~ /utf.?8/i) {
           $add = encode_base64(encode('utf-8',$add));
         } else {
-          $add = encode_base64($add);
+          eval { $add = encode_base64($add); };
         }
       } elsif ($cte =~ /quoted-printable/i) {
         if ($chs =~ /utf.?8/i) {
@@ -312,7 +321,8 @@ sub check_cte {
 # check charset and change to UTF8
 sub check_cs {
   my ($str, $cs) = @_;
-  if ($$cs =~ /(us-ascii|ISO-8859-.)/i) {
+#  if ($$cs =~ /(us-ascii|ISO-8859-.)/i) {
+  if ($$cs =~ /(us-ascii)/i) {
     $$str =~ s/$1/UTF-8/i;
     $$cs = 'utf-8';
   }
