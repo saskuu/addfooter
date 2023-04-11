@@ -4,6 +4,7 @@ add footer (disclaimer) to email in postfix
 ```
 cp addfooter.pl /etc/postfix
 cp addfooter.conf /etc/postfix
+chmod 755 /etc/postfix/addfooter.pl
 ```
 /etc/postfix/master.cf
 
