@@ -1,14 +1,24 @@
 #!/usr/bin/perl -w
+#apt install libmail-dkim-perl
 use strict;
 use utf8;
 use Encode;
 use MIME::QuotedPrint;
 use MIME::Base64;
 
+# dkim
+use Mail::DKIM::Signer;
+use Mail::DKIM::TextWrap;  #recommended
+use Mail::Internet;
+use Time::HiRes;
+
 use FindBin '$Bin';
 use lib "$Bin";
 our %config;
 require "$Bin/addfooter.conf";
+
+use Data::Dumper;
+
 
 no warnings 'utf8';
 
@@ -196,6 +206,46 @@ if (!$fl_add) { # end message
   out($line);
 }
 
+
+if ($config{dkim_key}) {
+
+  my $email = join('', @newmessage);
+  my @aemail = split(/\n/, $email);
+  @newmessage=();
+  foreach my $it (@aemail) {
+    chomp $it;
+    $it =~ s/\015?$/\015\012/s;
+    push(@newmessage,$it);
+  }
+
+  my $dkim = new Mail::DKIM::Signer(
+                Policy => \&signer_policy,
+                Algorithm => $config{dkim_algorithm},
+                Method => $config{dkim_method},
+                Selector => $config{dkim_selector},
+                KeyFile => $debug?'key.pem':$config{dkim_key},
+#                Debug_Canonicalization => 0,
+                );
+
+  my $msg_as_string = join('', @newmessage);
+  $dkim->PRINT($msg_as_string);
+  $dkim->CLOSE;
+
+  my $sign = $dkim->signature->as_string;
+#  $sign =~ s/\015\012/\012/g;
+
+  for my $i (0 .. $#newmessage) {
+    $newmessage[$i] =~ s/\015\012/\012/g;
+  }
+
+  my $msg = Mail::Internet->new();
+  $msg->extract(\@newmessage);
+  $msg->replace( 'DKIM-Signature', $sign);
+
+  @newmessage = ($msg->as_string());
+}
+
+
 save_log(\@newmessage,'.02'.$fl_add) if (!$debug && $fl_allow_footer && !$fl_deny_footer);
 
 if (!$debug) {
@@ -212,8 +262,6 @@ if (!$debug) {
   }
 }
 
-
-
 exit 0;
 #########################################
 
@@ -224,8 +272,44 @@ sub out {
   push @newmessage, $text;
 }
 
+sub signer_policy
+{
+        my $dkim = shift;
+
+        use Mail::DKIM::DkSignature;
+
+        $dkim->domain($config{dkim_domain} || $dkim->message_sender->host);
+
+        my $class = $config{dkim_type} eq "domainkeys" ? "Mail::DKIM::DkSignature" :
+                        $config{dkim_type} eq "dkim" ? "Mail::DKIM::Signature" :
+                                die "unknown signature type '".$config{dkim_type}."'\n";
+        my $timestamp = $config{dkim_timestamp} ? $config{dkim_timestamp} : time();
+        my $sig = $class->new(
+                        Algorithm => $dkim->algorithm,
+                        Method => $dkim->method,
+                        Headers => $dkim->headers,
+                        Domain => $dkim->domain,
+                        Selector => $dkim->selector,
+                        defined($config{dkim_timestamp}) ? (Timestamp => $config{dkim_expiration}) : (),
+                        defined($config{dkim_expiration}) ? (Expiration => $timestamp + $config{dkim_expiration}) : (),
+                        defined($config{dkim_identity}) ? (Identity => $config{dkim_identity}) : (),
+                );
+#        $sig->protocol($config{dkim_key_protocol}) if defined $config{dkim_key_protocol};
+#        if ($config{dkim_extra_tag}) {
+#                foreach my $extra ($config{dkim_extra_tag}->@*)
+#                {
+#                        my ($n, $v) = split /=/, $extra, 2;
+#                        $sig->set_tag($n, $v);
+#                }
+#        }
+        $dkim->add_signature($sig);
+        return;
+}
+
+
 sub add_footer {
   my ($str,$ct,$chs,$cte) = @_;
+
   if ($fl_allow_footer && !$fl_deny_footer) {
     my $add = '';
     my $add_str = '';
@@ -239,8 +323,8 @@ sub add_footer {
 
     if ($add_str) {
       if ($chs =~ /utf.?8/i) {
-#        $add = encode('utf-8', $add_str);
-        $add = $add_str;
+        $add = encode('utf-8', $add_str); # email in utf8 -> encode footer
+#        $add = $add_str;
       } else {
         eval {
           $add = encode($chs, $add_str);
